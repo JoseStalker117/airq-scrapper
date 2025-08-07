@@ -1,15 +1,89 @@
-from fastapi import FastAPI
-import fadmin
+from playwright.async_api import async_playwright
+from datetime import datetime
+from dotenv import load_dotenv
+import asyncio, json, os
+from fadmin import fbadmin
+load_dotenv('config.env')
 
-app = FastAPI(title="API MongoDB", version="1.0.0")
+def cargar_estados():
+    with open("estados.json", "r") as f:
+        estados = json.load(f)
+    return estados
 
 
-@app.get("/")
-async def root():
-    return {"message": "Estás conectado a FastAPI"}
+def guardar_datos(datos):
+    fecha = datetime.now().strftime("%Y-%m-%d")
+    with open(f"{os.getenv('dicc')}", "w") as f:
+        json.dump(datos, f, indent=2, ensure_ascii=True)
+    print("✅ Datos guardados en contaminantes.json")
+    
+
+def normalizar_nombre(nombre):
+    nombre = nombre.replace("\n", " ").strip()
+    mapeo = {
+        "PM2.5": "PM2,5",
+        "PM10": "PM10",
+        "O₃": "O3",
+        "NO₂": "NO2",
+        "SO₂": "SO2",
+        "CO": "CO"
+    }
+    for clave in mapeo:
+        if clave in nombre:
+            return mapeo[clave]
+    return None  # ignora si no está en el mapeo
+    
+async def extraer_contaminantes(estados):
+    resultados = {}
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+
+        for entrada in estados:
+            estado = entrada.get("estado", "Desconocido")
+            url = entrada.get("url", "")
+
+            print(f"🌐 Procesando {estado}...")
+
+            if not url:
+                print(f"⚠️ No se proporcionó URL para {estado}")
+                resultados[estado] = {}
+                continue
+
+            try:
+                await page.goto(url, timeout=60000)
+                await page.wait_for_selector('table[title="Contaminantes del aire"]', timeout=10000)
+
+                filas = await page.locator('table[title="Contaminantes del aire"] tr').all()
+                edo_res = {}
+
+                for fila in filas:
+                    try:
+                        nombre = await fila.locator('div.font-body-s.text-gray-900').first.inner_text()
+                        valor = await fila.locator('span.font-body-m-medium.text-gray-900').first.inner_text()
+                        
+                        clave = normalizar_nombre(nombre)
+                        if clave:  # Solo si es una clave válida
+                            edo_res[clave] = float(valor.strip())
+                            
+                    except Exception as fila_error:
+                        print(f"⚠️ Error procesando fila en {estado}: {fila_error}")
+                        continue
+
+                resultados[estado] = edo_res
+
+            except Exception as e:
+                print(f"❌ Error cargando la página para {estado}: {e}")
+                resultados[estado] = {}
+                continue  # sigue con el siguiente estado
+
+        await browser.close()
+
+    guardar_datos(resultados)
 
 
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+edos = cargar_estados()
+asyncio.run(extraer_contaminantes(edos))
+fb = fbadmin()
+fb.fb_guardar()
