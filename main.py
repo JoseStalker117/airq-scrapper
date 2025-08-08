@@ -82,8 +82,8 @@ async def extraer_contaminantes(estados):
 
     guardar_datos(resultados)
 
-
-edos = cargar_estados()
-asyncio.run(extraer_contaminantes(edos))
-fb = fbadmin()
-fb.fb_guardar()
+def run():
+    edos = cargar_estados()
+    asyncio.run(extraer_contaminantes(edos))
+    fb = fbadmin()
+    fb.fb_guardar()

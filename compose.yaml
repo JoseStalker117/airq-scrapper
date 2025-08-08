@@ -1,0 +1,10 @@
+services:
+  airq-scrapper:
+    build: .
+    container_name: airq-scrapper
+    env_file:
+      - config.env
+    volumes:
+      - ./:/cronos
+    command: python cronos.py
+    restart: unless-stopped
