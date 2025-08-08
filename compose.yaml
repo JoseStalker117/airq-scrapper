@@ -2,6 +2,7 @@ services:
   airq-scrapper:
     build: .
     container_name: airq-scrapper
+    image: airq-scrapper:latest
     env_file:
       - config.env
     volumes:

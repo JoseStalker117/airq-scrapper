@@ -2,7 +2,9 @@ import firebase_admin, os
 import matplotlib.pyplot as plt
 import pandas as pd
 from firebase_admin import credentials, db
+from sklearn.linear_model import LinearRegression
 from datetime import datetime
+import numpy as np
 from dotenv import load_dotenv
 import os, json
 
@@ -69,4 +71,4 @@ class airq:
             
 a = airq()
 a.consultar()
-a.graficar()
+a.depurar()
