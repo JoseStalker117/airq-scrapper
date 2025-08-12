@@ -1,22 +1,25 @@
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime, timedelta, time
+from datetime import datetime
 import main
 
 def mi_rutina():
+    print(f"Ejecutando {datetime.now()}")
     main.run()
 
-# Crear el programador
 scheduler = BlockingScheduler()
-# Programar la tarea usando cron (cada 6 horas a minuto 0)
-# scheduler.add_job(mi_rutina, 'cron', minute=0, hour='*/6')
-trigger = CronTrigger(hour='*/6', minute=0, second=0, timezone='America/Mexico_City')
-scheduler.add_job(mi_rutina, trigger)
-scheduler.start()
 
-try:
-    while True:
-        time.sleep(1)  # Mantener el script en ejecución
-except (KeyboardInterrupt, SystemExit):
-    scheduler.shutdown()
-    print("Scheduler detenido.")
+trigger = CronTrigger(
+    hour='*/4',
+    # minute='*/10',
+    timezone='America/Mexico_City'
+)
+
+scheduler.add_job(
+    mi_rutina,
+    trigger,
+    coalesce=True,              # Si se pierden ejecuciones, ejecuta solo una
+    misfire_grace_time=3600     # Hasta 1 hora de tolerancia
+)
+
+scheduler.start()

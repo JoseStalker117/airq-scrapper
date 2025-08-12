@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:slim
 
 WORKDIR /cronos
 
@@ -39,7 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Instalar navegadores de Playwright
-RUN python -m playwright install --with-deps
+RUN python -m playwright install
 
 # Asegura que los logs se vean en tiempo real
 ENV PYTHONUNBUFFERED=1

@@ -1,8 +1,13 @@
 import firebase_admin, os, json, time, pytz
 from firebase_admin import credentials, db, firestore
-from dotenv import load_dotenv
-from datetime import datetime
+from sklearn.linear_model import LinearRegression
+from datetime import datetime, timedelta
 import pandas as pd
+import pytz
+from dotenv import load_dotenv
+import matplotlib.pyplot as plt
+
+
 
 load_dotenv('config.env')
 cred = credentials.Certificate('Firebase-admin.json')
@@ -24,7 +29,7 @@ def timestamp():
 class fbadmin:
     def __init__(self):
         # Cambiado a raíz para evitar errores en rutas
-        self.db = db.reference('/airq')
+        self.db = db.reference('/')
         self.fs = firestore.client()
         self.data = None
 
@@ -41,7 +46,7 @@ class fbadmin:
 
     def consultar(self):
         try:
-            data = self.db.get()
+            data = self.db.child('airq').get()
             self.data = data
         except Exception as e:
             print(f"Error al consultar datos: {e}")
@@ -69,10 +74,7 @@ class fbadmin:
 
     def pronostico(self, municipio_filtrar=None, dias=7):
         try:
-            from sklearn.linear_model import LinearRegression
-            from datetime import datetime, timedelta
-            import pytz
-
+            
             tz_mx = pytz.timezone("America/Monterrey")
 
             # Extraer todos los datos en bruto (sin promediar)
@@ -135,15 +137,18 @@ class fbadmin:
 
     def dataframe(self):
         try:
-            from datetime import datetime
-            import pytz
-            tz_mx = pytz.timezone("America/Monterrey")
+            if not self.data or not isinstance(self.data, dict):
+                print("⚠️ No hay datos válidos en self.data para generar el DataFrame.")
+                return None
 
+            tz_mx = pytz.timezone("America/Monterrey")
             records = []
+
             for timestamp, municipios in self.data.items():
+                # Convertir timestamp a datetime
                 try:
                     ts_int = int(timestamp)
-                    fecha = datetime.fromtimestamp(ts_int, tz=tz_mx).strftime('%Y-%m-%d')
+                    fecha = datetime.fromtimestamp(ts_int, tz=tz_mx)
                 except Exception as e:
                     print(f"⏱ Timestamp inválido: {timestamp} ({e})")
                     continue
@@ -157,8 +162,14 @@ class fbadmin:
                         print(f"⚠️ Datos no válidos para {municipio} en {timestamp}")
                         continue
 
-                    record = {'municipio': municipio, 'fecha': fecha}
-                    record.update(contaminantes)
+                    # Normalizar clave "PM2,5"
+                    cont_normalizado = {
+                        (k.replace(",", "_") if isinstance(k, str) else k): v
+                        for k, v in contaminantes.items()
+                    }
+
+                    record = {"municipio": municipio, "fecha": fecha}
+                    record.update(cont_normalizado)
                     records.append(record)
 
             if not records:
@@ -167,13 +178,16 @@ class fbadmin:
 
             df = pd.DataFrame(records)
 
-            if 'fecha' not in df.columns:
+            if "fecha" not in df.columns:
                 print("❌ La columna 'fecha' no se generó correctamente.")
                 return None
 
-            df['fecha'] = pd.to_datetime(df['fecha'])
+            df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
             df.fillna(0, inplace=True)
-            self.df_promedios = df.groupby(['municipio', 'fecha'], as_index=False).mean(numeric_only=True)
+
+            # Calcular promedios por municipio y fecha
+            self.df_promedios = df.groupby(["municipio", "fecha"], as_index=False).mean(numeric_only=True)
+
             print("✅ DataFrame generado exitosamente.")
             return self.df_promedios
 
@@ -181,8 +195,9 @@ class fbadmin:
             print(f"❌ Error al generar el DataFrame: {e}")
             return None
 
+
     def graficar_dataframe(self, df, titulo="Gráfica de contaminantes (barras)"):
-        import matplotlib.pyplot as plt
+        
         try:
             if df is None or df.empty:
                 print("⚠️ El DataFrame está vacío o no es válido.")
