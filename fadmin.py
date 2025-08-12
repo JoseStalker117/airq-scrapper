@@ -214,7 +214,4 @@ class fbadmin:
         except Exception as e:
             print(f"❌ Error al graficar el DataFrame: {e}")
 
-a = fbadmin()
-a.consultar()
-a.graficar_dataframe(a.dataframe())
 
