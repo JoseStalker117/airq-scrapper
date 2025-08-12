@@ -3,11 +3,10 @@ from firebase_admin import credentials, db, firestore
 from sklearn.linear_model import LinearRegression
 from datetime import datetime, timedelta
 import pandas as pd
+import numpy as np
 import pytz
 from dotenv import load_dotenv
 import matplotlib.pyplot as plt
-
-
 
 load_dotenv('config.env')
 cred = credentials.Certificate('Firebase-admin.json')
@@ -72,67 +71,41 @@ class fbadmin:
             print("❌ El archivo gral-escobedo.xlsx no se encontró.")
             return
 
-    def pronostico(self, municipio_filtrar=None, dias=7):
+    def diagnostico_lineal(self, df, municipio, dias=30):
+        """
+        Filtra el DataFrame por municipio y rango de días, y calcula la regresión lineal para cada contaminante.
+        """
         try:
-            
-            tz_mx = pytz.timezone("America/Monterrey")
+            if 'fecha' not in df.columns or 'municipio' not in df.columns:
+                raise ValueError("El DataFrame debe contener las columnas 'fecha' y 'municipio'.")
 
-            # Extraer todos los datos en bruto (sin promediar)
-            registros = []
-            for timestamp, municipios in self.data.items():
-                try:
-                    ts = int(timestamp)
-                    fecha = datetime.fromtimestamp(ts, tz=tz_mx)
-                except Exception:
-                    continue
+            df['fecha'] = pd.to_datetime(df['fecha'])
+            columnas_numericas = df.select_dtypes(include='number').columns.tolist()
+            columnas_numericas = [c for c in columnas_numericas if c != 'municipio']
 
-                for municipio, contaminantes in municipios.items():
-                    if not isinstance(contaminantes, dict):
-                        continue
+            # Filtrar por municipio y rango de días
+            fecha_max = df['fecha'].max()
+            fecha_inicio = fecha_max - pd.Timedelta(days=dias)
+            df_filtrado = df[(df['municipio'] == municipio) & (df['fecha'] >= fecha_inicio)].sort_values('fecha')
 
-                    if municipio_filtrar and municipio != municipio_filtrar:
-                        continue
-
-                    registro = {
-                        'fecha': fecha,
-                        'timestamp': ts,
-                        'municipio': municipio
-                    }
-                    registro.update(contaminantes)
-                    registros.append(registro)
-
-            df = pd.DataFrame(registros)
-            
-
-            if df.empty:
-                print("⚠️ No hay datos suficientes para generar el pronóstico.")
+            if df_filtrado.empty:
+                print(f"⚠️ No hay datos para {municipio} en los últimos {dias} días.")
                 return None
-            
-            df.fillna(0, inplace=True)
-            df['days_since_start'] = (df['fecha'] - df['fecha'].min()).dt.total_seconds() / 86400  # convertir a días
 
-            # Crear fechas futuras
-            max_fecha = df['fecha'].max()
-            future_dates = [max_fecha + timedelta(days=i) for i in range(1, dias + 1)]
-            future_df = pd.DataFrame({'fecha': future_dates})
-            future_df['days_since_start'] = (future_df['fecha'] - df['fecha'].min()).dt.total_seconds() / 86400
+            # Calcular regresión lineal por columna
+            diagnostico = df_filtrado.copy()
+            for columna in columnas_numericas:
+                x = np.arange(len(df_filtrado)).reshape(-1, 1)
+                y = df_filtrado[columna].values.reshape(-1, 1)
 
-            # Identificar contaminantes numéricos
-            contaminantes = [col for col in df.columns if col not in ['fecha', 'timestamp', 'municipio', 'days_since_start']]
-
-            for contaminante in contaminantes:
                 model = LinearRegression()
-                x = df[['days_since_start']]
-                y = df[contaminante]
                 model.fit(x, y)
-                future_df[contaminante] = model.predict(future_df[['days_since_start']])
+                diagnostico[f"{columna}_tendencia"] = model.predict(x).flatten()
 
-            self.df_forecast = future_df
-            print("✅ Pronóstico generado exitosamente.")
-            return future_df
+            return diagnostico
 
         except Exception as e:
-            print(f"❌ Error al generar el pronóstico: {e}")
+            print(f"❌ Error en diagnostico_lineal: {e}")
             return None
 
     def dataframe(self):
@@ -195,38 +168,39 @@ class fbadmin:
             print(f"❌ Error al generar el DataFrame: {e}")
             return None
 
-
-    def graficar_dataframe(self, df, titulo="Gráfica de contaminantes (barras)"):
-        
+    def graficar_dataframe(self, df, municipio=None, titulo="Tendencia de contaminantes"):
         try:
             if df is None or df.empty:
                 print("⚠️ El DataFrame está vacío o no es válido.")
                 return
 
-            if 'fecha' not in df.columns:
-                print("❌ La columna 'fecha' no existe en el DataFrame.")
-                return
+            # Filtro por municipio si se indica
+            if municipio and 'municipio' in df.columns:
+                df = df[df['municipio'] == municipio]
+                if df.empty:
+                    print(f"⚠️ No hay datos para el municipio '{municipio}'.")
+                    return
 
-            df['fecha'] = pd.to_datetime(df['fecha'])
             columnas_numericas = df.select_dtypes(include='number').columns.tolist()
-
             if not columnas_numericas:
                 print("⚠️ No hay columnas numéricas para graficar.")
                 return
 
-            # Graficar cada columna como un subplot de barras
+            plt.figure(figsize=(14, 7))
+
             for columna in columnas_numericas:
-                plt.figure(figsize=(12, 6))
-                plt.bar(df['fecha'], df[columna])
-                plt.title(f"{titulo} - {columna}")
-                plt.xlabel("Fecha")
-                plt.ylabel(columna)
-                plt.xticks(rotation=45)
-                plt.grid(True)
-                plt.tight_layout()
-                plt.show()
+                plt.plot(df['fecha'], df[columna], label=columna)
+
+            plt.title(f"{titulo} - {municipio if municipio else 'Todos los municipios'}")
+            plt.xlabel("Fecha")
+            plt.ylabel("Valores")
+            plt.legend()
+            plt.grid(True)
+            plt.tight_layout()
+            plt.show()
 
         except Exception as e:
-            print(f"❌ Error al graficar el DataFrame: {e}")
+            print(f"❌ Error al graficar_dataframe: {e}")
+
 
 

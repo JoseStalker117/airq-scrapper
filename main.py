@@ -11,11 +11,19 @@ def cargar_estados():
     return estados
 
 
-def guardar_datos(datos):
-    fecha = datetime.now().strftime("%Y-%m-%d")
-    with open(f"{os.getenv('dicc')}", "w") as f:
-        json.dump(datos, f, indent=2, ensure_ascii=True)
-    print("✅ Datos guardados en contaminantes.json")
+def guardar_datos(dicc):
+    try:
+        ruta_archivo = os.getenv("dicc")
+        if not ruta_archivo:
+            print("⚠️ La variable de entorno 'dicc' no está definida.")
+            return
+
+        with open(ruta_archivo, "w", encoding="utf-8") as f:
+            json.dump(dicc, f, indent=2, ensure_ascii=False)
+
+        print(f"✅ Datos guardados en {ruta_archivo}")
+    except Exception as e:
+        print(f"❌ Error al guardar datos: {e}")
     
 
 def normalizar_nombre(nombre):
