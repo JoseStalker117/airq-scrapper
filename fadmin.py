@@ -71,9 +71,10 @@ class fbadmin:
             print("❌ El archivo gral-escobedo.xlsx no se encontró.")
             return
 
-    def diagnostico_lineal(self, df, municipio, dias=30):
+    def diagnostico_lineal(self, df, municipio, dias=30, pronostico_dias=7):
         """
-        Filtra el DataFrame por municipio y rango de días, y calcula la regresión lineal para cada contaminante.
+        Filtra el DataFrame por municipio y rango de días, calcula la regresión lineal para cada contaminante
+        y pronostica los próximos pronostico_dias días.
         """
         try:
             if 'fecha' not in df.columns or 'municipio' not in df.columns:
@@ -83,30 +84,49 @@ class fbadmin:
             columnas_numericas = df.select_dtypes(include='number').columns.tolist()
             columnas_numericas = [c for c in columnas_numericas if c != 'municipio']
 
-            # Filtrar por municipio y rango de días
+            # Filtrar por municipio y rango de días históricos
             fecha_max = df['fecha'].max()
             fecha_inicio = fecha_max - pd.Timedelta(days=dias)
-            df_filtrado = df[(df['municipio'] == municipio) & (df['fecha'] >= fecha_inicio)].sort_values('fecha')
+            df_hist = df[(df['municipio'] == municipio) & (df['fecha'] >= fecha_inicio)].sort_values('fecha')
 
-            if df_filtrado.empty:
+            if df_hist.empty:
                 print(f"⚠️ No hay datos para {municipio} en los últimos {dias} días.")
                 return None
 
-            # Calcular regresión lineal por columna
-            diagnostico = df_filtrado.copy()
+            diagnostico = df_hist.copy()
+            modelos = {}
+
+            # Ajustar modelo por cada contaminante y generar predicciones históricas
             for columna in columnas_numericas:
-                x = np.arange(len(df_filtrado)).reshape(-1, 1)
-                y = df_filtrado[columna].values.reshape(-1, 1)
+                x = np.arange(len(df_hist)).reshape(-1, 1)
+                y = df_hist[columna].values.reshape(-1, 1)
 
                 model = LinearRegression()
                 model.fit(x, y)
                 diagnostico[f"{columna}_tendencia"] = model.predict(x).flatten()
+                modelos[columna] = model
 
-            return diagnostico
+            # Crear fechas futuras para el pronóstico
+            fechas_futuras = [fecha_max + pd.Timedelta(days=i) for i in range(1, pronostico_dias + 1)]
+
+            # Construir DataFrame para pronóstico
+            df_pronostico = pd.DataFrame({
+                'fecha': fechas_futuras,
+                'municipio': municipio
+            })
+
+            # Predecir valores futuros con los modelos ajustados
+            x_future = np.arange(len(df_hist), len(df_hist) + pronostico_dias).reshape(-1, 1)
+            for columna, model in modelos.items():
+                predicciones = model.predict(x_future).flatten()
+                df_pronostico[columna] = predicciones
+                df_pronostico[f"{columna}_tendencia"] = predicciones  # La tendencia futura es la predicción misma
+
+            return diagnostico, df_pronostico
 
         except Exception as e:
             print(f"❌ Error en diagnostico_lineal: {e}")
-            return None
+            return None, None
 
     def dataframe(self):
         try:
@@ -191,7 +211,7 @@ class fbadmin:
             for columna in columnas_numericas:
                 plt.plot(df['fecha'], df[columna], label=columna)
 
-            plt.title(f"{titulo} - {municipio if municipio else 'Todos los municipios'}")
+            plt.title(f"{titulo} - {municipio if municipio else 'Municipio actual'}")
             plt.xlabel("Fecha")
             plt.ylabel("Valores")
             plt.legend()

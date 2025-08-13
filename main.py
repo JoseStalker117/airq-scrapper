@@ -95,3 +95,5 @@ def run():
     asyncio.run(extraer_contaminantes(edos))
     fb = fbadmin()
     fb.fb_guardar()
+    
+run()
